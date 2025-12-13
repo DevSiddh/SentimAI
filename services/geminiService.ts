@@ -16,19 +16,54 @@ const modelName = "gemini-2.5-flash";
 
 // --- MOCK DATA GENERATORS ---
 
+const MOCK_TEMPLATES = {
+  [SentimentType.POSITIVE]: [
+    (t: string) => `${t} is absolutely changing the game! loving it.`,
+    (t: string) => `Can't wait to get my hands on ${t}!`,
+    (t: string) => `Honestly, ${t} is the best thing I've seen all year.`,
+    (t: string) => `Huge props to the team behind ${t}. Incredible work.`,
+    (t: string) => `I'm obsessed with ${t}. It's just perfect.`,
+    (t: string) => `${t} exceeded all my expectations. 10/10.`,
+    (t: string) => `Finally tried ${t} and wow... just wow.`,
+    (t: string) => `If you haven't checked out ${t} yet, you're missing out!`
+  ],
+  [SentimentType.NEGATIVE]: [
+    (t: string) => `I don't understand the hype around ${t}. It feels overpriced.`,
+    (t: string) => `${t} disappointed me today. Expected better performance.`,
+    (t: string) => `Not a fan of the new ${t} update. It broke my workflow.`,
+    (t: string) => `Why is everyone talking about ${t}? It's actually terrible.`,
+    (t: string) => `I regret spending time on ${t}. complete waste.`,
+    (t: string) => `${t} is extremely buggy and unstable.`,
+    (t: string) => `I tried to like ${t}, but I just can't.`,
+    (t: string) => `${t} is the worst release so far.`
+  ],
+  [SentimentType.NEUTRAL]: [
+    (t: string) => `Just saw the news about ${t}. Interesting developments.`,
+    (t: string) => `Has anyone else tried ${t}? Curious about your thoughts.`,
+    (t: string) => `${t} is exactly what you'd expect. Nothing more, nothing less.`,
+    (t: string) => `Still on the fence about ${t}.`,
+    (t: string) => `Reading up on the documentation for ${t}.`,
+    (t: string) => `Here is a summary of the ${t} launch event.`,
+    (t: string) => `${t} is available now globally.`
+  ]
+};
+
 const getMockAnalysis = (text: string) => {
-  const isPositive = text.toLowerCase().includes('good') || text.toLowerCase().includes('love') || text.toLowerCase().includes('amazing');
-  const isNegative = text.toLowerCase().includes('bad') || text.toLowerCase().includes('hate') || text.toLowerCase().includes('terrible');
-  
+  const lower = text.toLowerCase();
   let sentiment = SentimentType.NEUTRAL;
-  if (isPositive) sentiment = SentimentType.POSITIVE;
-  if (isNegative) sentiment = SentimentType.NEGATIVE;
+  if (lower.includes('love') || lower.includes('best') || lower.includes('perfect') || lower.includes('wow') || lower.includes('game')) sentiment = SentimentType.POSITIVE;
+  else if (lower.includes('bad') || lower.includes('worst') || lower.includes('waste') || lower.includes('terrible') || lower.includes('buggy')) sentiment = SentimentType.NEGATIVE;
+  
+  // Extract pseudo-keywords (words > 4 chars)
+  const words = text.split(' ')
+    .map(w => w.replace(/[^a-zA-Z]/g, '').toLowerCase())
+    .filter(w => w.length > 4 && !w.includes('about') && !w.includes('there'));
 
   return {
     sentiment,
-    score: 0.85 + Math.random() * 0.14,
-    reasoning: "This is a simulated analysis based on keyword matching in Demo Mode.",
-    keywords: ["demo", "simulation", "mock"]
+    score: 0.75 + Math.random() * 0.24,
+    reasoning: "Simulated analysis based on keyword matching in Demo Mode.",
+    keywords: words.slice(0, 3).length > 0 ? words.slice(0, 3) : ["demo", "analysis"]
   };
 };
 
@@ -96,27 +131,35 @@ export const analyzeSingleTweet = async (text: string, useMock = false): Promise
 export const generateAndAnalyzeTopic = async (topic: string, count: number = 15, useMock = false): Promise<TweetData[]> => {
   if (useMock) {
     await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate generation delay
-    const mockTweets = [
-      { text: `${topic} is absolutely changing the game! loving it.`, sentiment: SentimentType.POSITIVE },
-      { text: `I don't understand the hype around ${topic}. It feels overpriced.`, sentiment: SentimentType.NEGATIVE },
-      { text: `Just saw the news about ${topic}. Interesting developments.`, sentiment: SentimentType.NEUTRAL },
-      { text: `Can't wait to get my hands on ${topic}!`, sentiment: SentimentType.POSITIVE },
-      { text: `${topic} disappointed me today. Expected better performance.`, sentiment: SentimentType.NEGATIVE },
-    ];
     
-    // Generate 'count' items by cycling through the mock templates
     return Array.from({ length: count }).map((_, i) => {
-      const template = mockTweets[i % mockTweets.length];
+      // Randomly select sentiment type
+      const rand = Math.random();
+      let type = SentimentType.NEUTRAL;
+      if (rand > 0.6) type = SentimentType.POSITIVE;
+      else if (rand > 0.3) type = SentimentType.NEGATIVE;
+      
+      const templates = MOCK_TEMPLATES[type];
+      const template = templates[Math.floor(Math.random() * templates.length)];
+      const text = template(topic);
+
+      // Extract basic keywords from the generated text
+      const keywords = text.split(' ')
+        .map(w => w.replace(/[^a-zA-Z]/g, '').toLowerCase())
+        .filter(w => w.length > 4 && w !== 'about' && w !== 'there')
+        .slice(0, 3);
+      if (keywords.length === 0) keywords.push(topic.split(' ')[0].toLowerCase());
+
       return {
         id: crypto.randomUUID(),
-        text: template.text,
-        author: `@mock_user_${i}`,
+        text: text,
+        author: `@mock_user_${Math.floor(Math.random() * 1000)}`,
         timestamp: new Date().toISOString(),
         analysis: {
-          sentiment: template.sentiment,
-          score: 0.7 + Math.random() * 0.2,
+          sentiment: type,
+          score: 0.7 + Math.random() * 0.25,
           reasoning: "Simulated analysis in Demo Mode.",
-          keywords: [topic.toLowerCase(), "demo", "simulated"]
+          keywords: keywords
         }
       };
     });
