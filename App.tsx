@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeSingleTweet, generateAndAnalyzeTopic, explainNLPConcept } from './services/geminiService';
+import { analyzeSingleTweet, generateAndAnalyzeTopic, explainNLPConcept, hasValidKey } from './services/geminiService';
 import { TweetData, SentimentType } from './types';
 import { TweetCard } from './components/TweetCard';
 import { SentimentDistributionChart, KeywordBarChart } from './components/Charts';
-import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal } from 'lucide-react';
+import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal, AlertTriangle, Settings } from 'lucide-react';
 
 // Common NLP terms to explain, mimicking a notebook curriculum
 const NLP_CONCEPTS = [
@@ -21,16 +21,28 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [tweets, setTweets] = useState<TweetData[]>([]);
   const [explanation, setExplanation] = useState<{title: string, content: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isConfigured, setIsConfigured] = useState(true);
 
-  // Initial load simulation
+  // Initial load check and simulation
   useEffect(() => {
+    if (!hasValidKey()) {
+      setIsConfigured(false);
+      return;
+    }
     handleAnalyze();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAnalyze = async () => {
+    if (!hasValidKey()) {
+      setIsConfigured(false);
+      return;
+    }
     if (!inputValue.trim()) return;
+    
     setIsLoading(true);
+    setError(null);
     setTweets([]); // Clear previous
 
     try {
@@ -42,18 +54,31 @@ function App() {
         const batch = await generateAndAnalyzeTopic(inputValue);
         setTweets(batch);
       }
-    } catch (error) {
-      console.error("Analysis failed", error);
-      alert("Something went wrong with the AI service. Please try again.");
+    } catch (err: any) {
+      console.error("Analysis failed", err);
+      if (err.message === "API_KEY_MISSING") {
+        setIsConfigured(false);
+      } else {
+        setError(err.message || "Something went wrong with the AI service. Please check your quota or try again.");
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleLearn = async (concept: string) => {
+    if (!hasValidKey()) {
+      setIsConfigured(false);
+      return;
+    }
     setExplanation(null);
-    const content = await explainNLPConcept(concept);
-    setExplanation({ title: concept, content });
+    setError(null);
+    try {
+      const content = await explainNLPConcept(concept);
+      setExplanation({ title: concept, content });
+    } catch (err: any) {
+      setError("Failed to generate explanation. Please try again.");
+    }
   };
 
   // Calculate aggregate stats
@@ -101,6 +126,35 @@ function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         
+        {/* Error Banners */}
+        {!isConfigured && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8 flex items-start gap-4">
+            <div className="bg-amber-100 p-2 rounded-full text-amber-600 mt-1">
+              <Settings size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-amber-800">Configuration Required</h3>
+              <p className="text-amber-700 text-sm mt-1 mb-2">
+                To run this AI application, you need to set up your API key in Vercel.
+              </p>
+              <ol className="list-decimal list-inside text-sm text-amber-800 space-y-1 ml-1">
+                <li>Go to your Vercel Project Settings</li>
+                <li>Navigate to <strong>Environment Variables</strong></li>
+                <li>Add a new variable named <code className="bg-amber-100 px-1 rounded font-mono">API_KEY</code></li>
+                <li>Paste your Gemini API key as the value</li>
+                <li>Redeploy your application</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {error && (
+           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-8 flex items-center gap-3">
+             <AlertTriangle className="text-red-500" size={24} />
+             <p className="text-red-700">{error}</p>
+           </div>
+        )}
+
         {/* Intro / Context */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-slate-800 mb-2">
@@ -124,11 +178,12 @@ function App() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
               placeholder={mode === 'dataset' ? "Enter a topic (e.g., 'Bitcoin', 'New Marvel Movie')" : "Paste tweet text here..."}
-              className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
+              disabled={!isConfigured || isLoading}
+              className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 disabled:opacity-50"
             />
             <button
               onClick={handleAnalyze}
-              disabled={isLoading}
+              disabled={!isConfigured || isLoading}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}

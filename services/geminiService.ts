@@ -1,16 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { SentimentType, TweetData, TopicSummary } from "../types";
 
-// Helper to get the AI instance lazily. 
-// This prevents the app from crashing on load if the API_KEY is missing in the environment.
+export const hasValidKey = () => {
+  return typeof process.env.API_KEY === 'string' && process.env.API_KEY.length > 0;
+};
+
 const getAI = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.warn("API Key is missing. AI features will not work.");
-    // We return a dummy object or throw a handled error if preferred, 
-    // but the SDK requires a key. 
+  if (!hasValidKey()) {
+    throw new Error("API_KEY_MISSING");
   }
-  return new GoogleGenAI({ apiKey: apiKey || "dummy_key_to_prevent_crash" });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 const modelName = "gemini-2.5-flash";
