@@ -14,10 +14,39 @@ const getAI = () => {
 
 const modelName = "gemini-2.5-flash";
 
+// --- MOCK DATA GENERATORS ---
+
+const getMockAnalysis = (text: string) => {
+  const isPositive = text.toLowerCase().includes('good') || text.toLowerCase().includes('love') || text.toLowerCase().includes('amazing');
+  const isNegative = text.toLowerCase().includes('bad') || text.toLowerCase().includes('hate') || text.toLowerCase().includes('terrible');
+  
+  let sentiment = SentimentType.NEUTRAL;
+  if (isPositive) sentiment = SentimentType.POSITIVE;
+  if (isNegative) sentiment = SentimentType.NEGATIVE;
+
+  return {
+    sentiment,
+    score: 0.85 + Math.random() * 0.14,
+    reasoning: "This is a simulated analysis based on keyword matching in Demo Mode.",
+    keywords: ["demo", "simulation", "mock"]
+  };
+};
+
 /**
  * Analyzes a single tweet text for sentiment.
  */
-export const analyzeSingleTweet = async (text: string): Promise<TweetData> => {
+export const analyzeSingleTweet = async (text: string, useMock = false): Promise<TweetData> => {
+  if (useMock) {
+    await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network delay
+    return {
+      id: crypto.randomUUID(),
+      text: text,
+      author: "@DemoUser",
+      timestamp: new Date().toISOString(),
+      analysis: getMockAnalysis(text)
+    };
+  }
+
   const ai = getAI();
   const prompt = `Analyze the sentiment of the following tweet: "${text}". 
   Provide the sentiment (Positive, Negative, Neutral), a confidence score (0.0 to 1.0), 
@@ -64,7 +93,35 @@ export const analyzeSingleTweet = async (text: string): Promise<TweetData> => {
  * Simulates the "Dataset Generation" part of a notebook.
  * Generates synthetic tweets about a topic and analyzes them in batch.
  */
-export const generateAndAnalyzeTopic = async (topic: string, count: number = 15): Promise<TweetData[]> => {
+export const generateAndAnalyzeTopic = async (topic: string, count: number = 15, useMock = false): Promise<TweetData[]> => {
+  if (useMock) {
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate generation delay
+    const mockTweets = [
+      { text: `${topic} is absolutely changing the game! loving it.`, sentiment: SentimentType.POSITIVE },
+      { text: `I don't understand the hype around ${topic}. It feels overpriced.`, sentiment: SentimentType.NEGATIVE },
+      { text: `Just saw the news about ${topic}. Interesting developments.`, sentiment: SentimentType.NEUTRAL },
+      { text: `Can't wait to get my hands on ${topic}!`, sentiment: SentimentType.POSITIVE },
+      { text: `${topic} disappointed me today. Expected better performance.`, sentiment: SentimentType.NEGATIVE },
+    ];
+    
+    // Generate 'count' items by cycling through the mock templates
+    return Array.from({ length: count }).map((_, i) => {
+      const template = mockTweets[i % mockTweets.length];
+      return {
+        id: crypto.randomUUID(),
+        text: template.text,
+        author: `@mock_user_${i}`,
+        timestamp: new Date().toISOString(),
+        analysis: {
+          sentiment: template.sentiment,
+          score: 0.7 + Math.random() * 0.2,
+          reasoning: "Simulated analysis in Demo Mode.",
+          keywords: [topic.toLowerCase(), "demo", "simulated"]
+        }
+      };
+    });
+  }
+
   const ai = getAI();
   const prompt = `Generate ${count} realistic tweets about the topic "${topic}". 
   Vary the sentiment widely (some positive, some negative, some neutral, some sarcastic).
@@ -112,7 +169,12 @@ export const generateAndAnalyzeTopic = async (topic: string, count: number = 15)
 /**
  * Educational helper: Explains a specific NLP concept as if reading a notebook markdown cell.
  */
-export const explainNLPConcept = async (concept: string): Promise<string> => {
+export const explainNLPConcept = async (concept: string, useMock = false): Promise<string> => {
+  if (useMock) {
+    await new Promise(resolve => setTimeout(resolve, 600));
+    return `[DEMO MODE] ${concept} is a fundamental technique in NLP. In a real notebook, this cell would explain how ${concept} transforms raw text into structured data suitable for machine learning models using libraries like NLTK or scikit-learn.`;
+  }
+
   const ai = getAI();
   const prompt = `Explain the NLP concept "${concept}" simply, as if it were a markdown cell in a Kaggle data science notebook. Keep it under 100 words.`;
   

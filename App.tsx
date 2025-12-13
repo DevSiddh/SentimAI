@@ -3,7 +3,7 @@ import { analyzeSingleTweet, generateAndAnalyzeTopic, explainNLPConcept, hasVali
 import { TweetData, SentimentType } from './types';
 import { TweetCard } from './components/TweetCard';
 import { SentimentDistributionChart, KeywordBarChart } from './components/Charts';
-import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal, AlertTriangle, Settings } from 'lucide-react';
+import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal, AlertTriangle, Settings, ExternalLink, PlayCircle } from 'lucide-react';
 
 // Common NLP terms to explain, mimicking a notebook curriculum
 const NLP_CONCEPTS = [
@@ -22,23 +22,28 @@ function App() {
   const [tweets, setTweets] = useState<TweetData[]>([]);
   const [explanation, setExplanation] = useState<{title: string, content: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isConfigured, setIsConfigured] = useState(true);
+  const [showConfigWarning, setShowConfigWarning] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
-  // Initial load check and simulation
+  // Initial load check
   useEffect(() => {
     if (!hasValidKey()) {
-      setIsConfigured(false);
-      return;
+      setShowConfigWarning(true);
+    } else {
+      // If we have a key, do an initial fetch
+      handleAnalyze(false);
     }
-    handleAnalyze();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAnalyze = async () => {
-    if (!hasValidKey()) {
-      setIsConfigured(false);
+  const handleAnalyze = async (forceDemo?: boolean) => {
+    const usingDemo = forceDemo ?? isDemoMode;
+    
+    if (!hasValidKey() && !usingDemo) {
+      setShowConfigWarning(true);
       return;
     }
+    
     if (!inputValue.trim()) return;
     
     setIsLoading(true);
@@ -47,19 +52,19 @@ function App() {
 
     try {
       if (mode === 'live') {
-        const tweet = await analyzeSingleTweet(inputValue);
+        const tweet = await analyzeSingleTweet(inputValue, usingDemo);
         setTweets([tweet]);
       } else {
         // Dataset mode: Simulate fetching and processing a batch
-        const batch = await generateAndAnalyzeTopic(inputValue);
+        const batch = await generateAndAnalyzeTopic(inputValue, 15, usingDemo);
         setTweets(batch);
       }
     } catch (err: any) {
       console.error("Analysis failed", err);
       if (err.message === "API_KEY_MISSING") {
-        setIsConfigured(false);
+        setShowConfigWarning(true);
       } else {
-        setError(err.message || "Something went wrong with the AI service. Please check your quota or try again.");
+        setError(err.message || "Something went wrong with the AI service.");
       }
     } finally {
       setIsLoading(false);
@@ -67,18 +72,24 @@ function App() {
   };
 
   const handleLearn = async (concept: string) => {
-    if (!hasValidKey()) {
-      setIsConfigured(false);
+    if (!hasValidKey() && !isDemoMode) {
+      setShowConfigWarning(true);
       return;
     }
     setExplanation(null);
     setError(null);
     try {
-      const content = await explainNLPConcept(concept);
+      const content = await explainNLPConcept(concept, isDemoMode);
       setExplanation({ title: concept, content });
     } catch (err: any) {
       setError("Failed to generate explanation. Please try again.");
     }
+  };
+
+  const enableDemoMode = () => {
+    setIsDemoMode(true);
+    setShowConfigWarning(false);
+    handleAnalyze(true);
   };
 
   // Calculate aggregate stats
@@ -98,6 +109,11 @@ function App() {
               <Twitter size={20} fill="currentColor" />
             </div>
             <h1 className="font-bold text-xl tracking-tight text-slate-800">Sentim<span className="text-blue-500">AI</span></h1>
+            {isDemoMode && (
+               <span className="ml-2 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200">
+                 DEMO MODE
+               </span>
+            )}
           </div>
           
           <nav className="hidden md:flex gap-1 bg-slate-100 p-1 rounded-lg">
@@ -127,23 +143,46 @@ function App() {
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         
         {/* Error Banners */}
-        {!isConfigured && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8 flex items-start gap-4">
-            <div className="bg-amber-100 p-2 rounded-full text-amber-600 mt-1">
-              <Settings size={20} />
-            </div>
-            <div>
-              <h3 className="font-bold text-amber-800">Configuration Required</h3>
-              <p className="text-amber-700 text-sm mt-1 mb-2">
-                To run this AI application, you need to set up your API key in Vercel.
-              </p>
-              <ol className="list-decimal list-inside text-sm text-amber-800 space-y-1 ml-1">
-                <li>Go to your Vercel Project Settings</li>
-                <li>Navigate to <strong>Environment Variables</strong></li>
-                <li>Add a new variable named <code className="bg-amber-100 px-1 rounded font-mono">API_KEY</code></li>
-                <li>Paste your Gemini API key as the value</li>
-                <li>Redeploy your application</li>
-              </ol>
+        {showConfigWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+            <div className="flex items-start gap-4">
+              <div className="bg-amber-100 p-2 rounded-full text-amber-600 mt-1">
+                <Settings size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-amber-800">Configuration Required</h3>
+                <p className="text-amber-700 mt-1 mb-4">
+                  To use the live AI features, you need to set up your Gemini API key in Vercel environment variables.
+                </p>
+                
+                <div className="flex flex-wrap gap-4">
+                   <a 
+                     href="https://aistudio.google.com/app/apikey" 
+                     target="_blank" 
+                     rel="noopener noreferrer"
+                     className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg font-medium transition-colors"
+                   >
+                     <ExternalLink size={18} />
+                     Get API Key
+                   </a>
+                   <button 
+                     onClick={enableDemoMode}
+                     className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 rounded-lg font-medium transition-colors shadow-sm"
+                   >
+                     <PlayCircle size={18} />
+                     Use Demo Mode (Mock Data)
+                   </button>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-amber-200/50">
+                  <p className="text-xs text-amber-800 font-semibold mb-1">How to add to Vercel:</p>
+                  <ol className="list-decimal list-inside text-xs text-amber-800 space-y-1 ml-1 font-mono">
+                    <li>Vercel Dashboard → Project Settings → Environment Variables</li>
+                    <li>Key: API_KEY</li>
+                    <li>Value: [Your Gemini API Key]</li>
+                  </ol>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -178,12 +217,12 @@ function App() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
               placeholder={mode === 'dataset' ? "Enter a topic (e.g., 'Bitcoin', 'New Marvel Movie')" : "Paste tweet text here..."}
-              disabled={!isConfigured || isLoading}
+              disabled={showConfigWarning && !isDemoMode}
               className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-700 placeholder:text-slate-400 disabled:opacity-50"
             />
             <button
-              onClick={handleAnalyze}
-              disabled={!isConfigured || isLoading}
+              onClick={() => handleAnalyze()}
+              disabled={(showConfigWarning && !isDemoMode) || isLoading}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}
@@ -261,7 +300,7 @@ function App() {
                   <Terminal size={18} /> Behind the Scenes
                 </h3>
                 <p className="text-blue-800 text-sm mb-4">
-                  The model identified the sentiment as <strong>{tweets[0].analysis?.sentiment}</strong> with a confidence score of <strong>{tweets[0].analysis?.score}</strong>.
+                  The model identified the sentiment as <strong>{tweets[0].analysis?.sentiment}</strong> with a confidence score of <strong>{tweets[0].analysis?.score.toFixed(2)}</strong>.
                 </p>
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-blue-700 font-mono border-b border-blue-200 pb-1">
