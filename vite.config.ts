@@ -11,6 +11,21 @@ export default defineConfig(({ mode }) => {
       // Polyfill process.env.API_KEY for the browser build
       // Default to empty string if undefined to prevent 'process is not defined' error
       'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
+    },
+    build: {
+      // Increase the warning limit to 1000kb (1MB) to handle large libraries like Recharts
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          // Manually split large vendor libraries into separate chunks
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            charts: ['recharts'],
+            ui: ['lucide-react'],
+            ai: ['@google/genai']
+          }
+        }
+      }
     }
   };
 });

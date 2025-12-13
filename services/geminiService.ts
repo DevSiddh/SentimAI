@@ -1,8 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { SentimentType, TweetData, TopicSummary } from "../types";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get the AI instance lazily. 
+// This prevents the app from crashing on load if the API_KEY is missing in the environment.
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("API Key is missing. AI features will not work.");
+    // We return a dummy object or throw a handled error if preferred, 
+    // but the SDK requires a key. 
+  }
+  return new GoogleGenAI({ apiKey: apiKey || "dummy_key_to_prevent_crash" });
+};
 
 const modelName = "gemini-2.5-flash";
 
@@ -10,6 +19,7 @@ const modelName = "gemini-2.5-flash";
  * Analyzes a single tweet text for sentiment.
  */
 export const analyzeSingleTweet = async (text: string): Promise<TweetData> => {
+  const ai = getAI();
   const prompt = `Analyze the sentiment of the following tweet: "${text}". 
   Provide the sentiment (Positive, Negative, Neutral), a confidence score (0.0 to 1.0), 
   a brief reasoning explaining why, and extract up to 3 key keywords relating to the sentiment.`;
@@ -56,6 +66,7 @@ export const analyzeSingleTweet = async (text: string): Promise<TweetData> => {
  * Generates synthetic tweets about a topic and analyzes them in batch.
  */
 export const generateAndAnalyzeTopic = async (topic: string, count: number = 15): Promise<TweetData[]> => {
+  const ai = getAI();
   const prompt = `Generate ${count} realistic tweets about the topic "${topic}". 
   Vary the sentiment widely (some positive, some negative, some neutral, some sarcastic).
   For each tweet, provide the tweet text and its sentiment analysis immediately.
@@ -103,6 +114,7 @@ export const generateAndAnalyzeTopic = async (topic: string, count: number = 15)
  * Educational helper: Explains a specific NLP concept as if reading a notebook markdown cell.
  */
 export const explainNLPConcept = async (concept: string): Promise<string> => {
+  const ai = getAI();
   const prompt = `Explain the NLP concept "${concept}" simply, as if it were a markdown cell in a Kaggle data science notebook. Keep it under 100 words.`;
   
   const response = await ai.models.generateContent({
