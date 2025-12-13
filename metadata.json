@@ -1,0 +1,5 @@
+{
+  "name": "Twitter Sentiment AI",
+  "description": "A powerful NLP dashboard that simulates executing a Twitter Sentiment Analysis notebook. It uses Gemini to analyze live text, generate topic-based tweet datasets, and visualize sentiment trends with interactive charts, replicating key data science workflows.",
+  "requestFramePermissions": []
+}
