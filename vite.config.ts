@@ -9,7 +9,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Polyfill process.env.API_KEY for the browser build
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Default to empty string if undefined to prevent 'process is not defined' error
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
     }
   };
 });
