@@ -21,7 +21,7 @@ const getGeminiAI = () => {
 };
 
 const geminiModelName = "gemini-2.5-flash";
-const groqModelName = "llama3-70b-8192";
+const groqModelName = "llama-3.1-8b-instant";
 
 // --- GROQ HELPER ---
 const callGroq = async (messages: any[], jsonMode: boolean = true) => {
