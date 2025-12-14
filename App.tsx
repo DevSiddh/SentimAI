@@ -17,7 +17,7 @@ const NLP_CONCEPTS = [
 
 function App() {
   const [mode, setMode] = useState<'live' | 'dataset' | 'learn'>('dataset');
-  const [provider, setProvider] = useState<AIProvider>('gemini');
+  const [provider, setProvider] = useState<AIProvider>('groq');
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [tweets, setTweets] = useState<TweetData[]>([]);
@@ -257,7 +257,7 @@ function App() {
                 ? 'bg-blue-50 text-blue-700 border-blue-200' 
                 : 'bg-orange-50 text-orange-700 border-orange-200'
             }`}>
-              Powered by {provider === 'gemini' ? 'Gemini 2.5 Flash' : 'Groq Llama 3'}
+              Powered by {provider === 'gemini' ? 'Gemini 2.5 Flash' : 'Groq Llama 3.1'}
             </span>
           </div>
           
@@ -312,7 +312,10 @@ function App() {
                 <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Overall Sentiment</h3>
                 <div className="flex items-end gap-2 mb-2">
                   <span className="text-5xl font-bold text-slate-800">{posPct}%</span>
-                  <span className="text-lg font-medium text-green-500 mb-2">Positive</span>
+                  <span className="text-5xl" role="img" aria-label="emoji">
+                    {posPct >= 70 ? '🤩' : posPct >= 50 ? '😃' : posPct >= 30 ? '😐' : '😒'}
+                  </span>
+                  <span className="text-lg font-medium text-green-500 mb-2 ml-1">Positive</span>
                 </div>
                 <p className="text-sm text-slate-500">Based on {totalTweets} analyzed tweets about "{inputValue}".</p>
                 <div className="mt-4 flex gap-1 h-2 rounded-full overflow-hidden bg-slate-100">

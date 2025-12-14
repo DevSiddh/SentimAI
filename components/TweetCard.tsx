@@ -6,6 +6,32 @@ interface TweetCardProps {
   tweet: TweetData;
 }
 
+const getSentimentEmoji = (sentiment: SentimentType, score: number) => {
+  // High confidence (>70%)
+  if (score >= 0.7) {
+    switch (sentiment) {
+      case SentimentType.POSITIVE: return '🤩'; // Star-struck
+      case SentimentType.NEGATIVE: return '🤬'; // Symbol over mouth
+      case SentimentType.NEUTRAL: return '😐'; // Neutral face
+    }
+  }
+  // Medium confidence (>40%)
+  if (score >= 0.4) {
+    switch (sentiment) {
+      case SentimentType.POSITIVE: return '😃'; // Grinning
+      case SentimentType.NEGATIVE: return '😠'; // Angry
+      case SentimentType.NEUTRAL: return '😶'; // No mouth
+    }
+  }
+  // Low confidence
+  switch (sentiment) {
+    case SentimentType.POSITIVE: return '🙂'; // Slightly smiling
+    case SentimentType.NEGATIVE: return '😒'; // Unamused
+    case SentimentType.NEUTRAL: return '🤔'; // Thinking
+  }
+  return '😶';
+};
+
 const SentimentBadge: React.FC<{ sentiment: SentimentType; score: number }> = ({ sentiment, score }) => {
   const colors = {
     [SentimentType.POSITIVE]: 'bg-green-100 text-green-800 border-green-200',
@@ -13,9 +39,13 @@ const SentimentBadge: React.FC<{ sentiment: SentimentType; score: number }> = ({
     [SentimentType.NEUTRAL]: 'bg-gray-100 text-gray-800 border-gray-200',
   };
 
+  const emoji = getSentimentEmoji(sentiment, score);
+
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${colors[sentiment]} flex items-center gap-1`}>
-      {sentiment} <span className="opacity-60">({(score * 100).toFixed(0)}%)</span>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${colors[sentiment]} flex items-center gap-1.5 shadow-sm`}>
+      <span className="text-base leading-none" role="img" aria-label={sentiment}>{emoji}</span>
+      <span className="font-semibold">{sentiment}</span>
+      <span className="opacity-70 font-mono text-[10px]">{(score * 100).toFixed(0)}%</span>
     </span>
   );
 };
