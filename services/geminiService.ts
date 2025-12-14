@@ -1,18 +1,59 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { SentimentType, TweetData, TopicSummary } from "../types";
 
-export const hasValidKey = () => {
-  return typeof process.env.API_KEY === 'string' && process.env.API_KEY.length > 0;
+export type AIProvider = 'gemini' | 'groq';
+
+export const hasValidKey = (provider: AIProvider = 'gemini') => {
+  if (provider === 'gemini') {
+    return typeof process.env.API_KEY === 'string' && process.env.API_KEY.length > 0;
+  }
+  if (provider === 'groq') {
+    return typeof process.env.GROQ_API_KEY === 'string' && process.env.GROQ_API_KEY.length > 0;
+  }
+  return false;
 };
 
-const getAI = () => {
-  if (!hasValidKey()) {
+const getGeminiAI = () => {
+  if (!process.env.API_KEY) {
     throw new Error("API_KEY_MISSING");
   }
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-const modelName = "gemini-2.5-flash";
+const geminiModelName = "gemini-2.5-flash";
+const groqModelName = "llama3-70b-8192";
+
+// --- GROQ HELPER ---
+const callGroq = async (messages: any[], jsonMode: boolean = true) => {
+  if (!process.env.GROQ_API_KEY) throw new Error("API_KEY_MISSING");
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messages: messages,
+        model: groqModelName,
+        response_format: jsonMode ? { type: "json_object" } : undefined,
+        temperature: 0.5,
+        max_tokens: 2048
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error?.message || `Groq API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0]?.message?.content || "{}";
+  } catch (error: any) {
+    throw new Error(error.message || "Failed to connect to Groq API");
+  }
+};
 
 // --- MOCK DATA GENERATORS ---
 
@@ -70,7 +111,7 @@ const getMockAnalysis = (text: string) => {
 /**
  * Analyzes a single tweet text for sentiment.
  */
-export const analyzeSingleTweet = async (text: string, useMock = false): Promise<TweetData> => {
+export const analyzeSingleTweet = async (text: string, useMock = false, provider: AIProvider = 'gemini'): Promise<TweetData> => {
   if (useMock) {
     await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network delay
     return {
@@ -82,33 +123,47 @@ export const analyzeSingleTweet = async (text: string, useMock = false): Promise
     };
   }
 
-  const ai = getAI();
-  const prompt = `Analyze the sentiment of the following tweet: "${text}". 
-  Provide the sentiment (Positive, Negative, Neutral), a confidence score (0.0 to 1.0), 
-  a brief reasoning explaining why, and extract up to 3 key keywords relating to the sentiment.`;
+  let result: any = {};
 
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          sentiment: { type: Type.STRING, enum: [SentimentType.POSITIVE, SentimentType.NEGATIVE, SentimentType.NEUTRAL] },
-          score: { type: Type.NUMBER },
-          reasoning: { type: Type.STRING },
-          keywords: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING } 
-          }
-        },
-        required: ["sentiment", "score", "reasoning", "keywords"]
+  if (provider === 'gemini') {
+    const ai = getGeminiAI();
+    const prompt = `Analyze the sentiment of the following tweet: "${text}". 
+    Provide the sentiment (Positive, Negative, Neutral), a confidence score (0.0 to 1.0), 
+    a brief reasoning explaining why, and extract up to 3 key keywords relating to the sentiment.`;
+
+    const response = await ai.models.generateContent({
+      model: geminiModelName,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            sentiment: { type: Type.STRING, enum: [SentimentType.POSITIVE, SentimentType.NEGATIVE, SentimentType.NEUTRAL] },
+            score: { type: Type.NUMBER },
+            reasoning: { type: Type.STRING },
+            keywords: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            }
+          },
+          required: ["sentiment", "score", "reasoning", "keywords"]
+        }
       }
-    }
-  });
-
-  const result = JSON.parse(response.text || "{}");
+    });
+    result = JSON.parse(response.text || "{}");
+  } else if (provider === 'groq') {
+    const messages = [
+      {
+        role: "system",
+        content: `You are a sentiment analysis expert. Analyze the tweet. Return a JSON object with this structure: 
+        { "sentiment": "Positive" | "Negative" | "Neutral", "score": number (0-1), "reasoning": "string", "keywords": ["string"] }`
+      },
+      { role: "user", content: `Analyze this tweet: "${text}"` }
+    ];
+    const jsonStr = await callGroq(messages);
+    result = JSON.parse(jsonStr);
+  }
 
   return {
     id: crypto.randomUUID(),
@@ -128,7 +183,7 @@ export const analyzeSingleTweet = async (text: string, useMock = false): Promise
  * Simulates the "Dataset Generation" part of a notebook.
  * Generates synthetic tweets about a topic and analyzes them in batch.
  */
-export const generateAndAnalyzeTopic = async (topic: string, count: number = 15, useMock = false): Promise<TweetData[]> => {
+export const generateAndAnalyzeTopic = async (topic: string, count: number = 15, useMock = false, provider: AIProvider = 'gemini'): Promise<TweetData[]> => {
   if (useMock) {
     await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate generation delay
     
@@ -165,35 +220,50 @@ export const generateAndAnalyzeTopic = async (topic: string, count: number = 15,
     });
   }
 
-  const ai = getAI();
-  const prompt = `Generate ${count} realistic tweets about the topic "${topic}". 
-  Vary the sentiment widely (some positive, some negative, some neutral, some sarcastic).
-  For each tweet, provide the tweet text and its sentiment analysis immediately.
-  `;
+  let rawData: any[] = [];
 
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            text: { type: Type.STRING },
-            sentiment: { type: Type.STRING, enum: [SentimentType.POSITIVE, SentimentType.NEGATIVE, SentimentType.NEUTRAL] },
-            score: { type: Type.NUMBER },
-            reasoning: { type: Type.STRING },
-            keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["text", "sentiment", "score", "reasoning", "keywords"]
+  if (provider === 'gemini') {
+    const ai = getGeminiAI();
+    const prompt = `Generate ${count} realistic tweets about the topic "${topic}". 
+    Vary the sentiment widely (some positive, some negative, some neutral, some sarcastic).
+    For each tweet, provide the tweet text and its sentiment analysis immediately.`;
+
+    const response = await ai.models.generateContent({
+      model: geminiModelName,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING },
+              sentiment: { type: Type.STRING, enum: [SentimentType.POSITIVE, SentimentType.NEGATIVE, SentimentType.NEUTRAL] },
+              score: { type: Type.NUMBER },
+              reasoning: { type: Type.STRING },
+              keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["text", "sentiment", "score", "reasoning", "keywords"]
+          }
         }
       }
-    }
-  });
+    });
+    rawData = JSON.parse(response.text || "[]");
 
-  const rawData = JSON.parse(response.text || "[]");
+  } else if (provider === 'groq') {
+    const messages = [
+      {
+        role: "system",
+        content: `Generate ${count} tweets about "${topic}". Vary sentiment. Return a JSON object with a key "tweets" containing an array of objects.
+        Each object must follow this schema: { "text": "tweet content", "sentiment": "Positive" | "Negative" | "Neutral", "score": number, "reasoning": "string", "keywords": ["string"] }`
+      },
+      { role: "user", content: `Generate tweets about ${topic}` }
+    ];
+    const jsonStr = await callGroq(messages);
+    const parsed = JSON.parse(jsonStr);
+    rawData = parsed.tweets || parsed || [];
+  }
 
   return rawData.map((item: any) => ({
     id: crypto.randomUUID(),
@@ -212,19 +282,26 @@ export const generateAndAnalyzeTopic = async (topic: string, count: number = 15,
 /**
  * Educational helper: Explains a specific NLP concept as if reading a notebook markdown cell.
  */
-export const explainNLPConcept = async (concept: string, useMock = false): Promise<string> => {
+export const explainNLPConcept = async (concept: string, useMock = false, provider: AIProvider = 'gemini'): Promise<string> => {
   if (useMock) {
     await new Promise(resolve => setTimeout(resolve, 600));
     return `[DEMO MODE] ${concept} is a fundamental technique in NLP. In a real notebook, this cell would explain how ${concept} transforms raw text into structured data suitable for machine learning models using libraries like NLTK or scikit-learn.`;
   }
 
-  const ai = getAI();
-  const prompt = `Explain the NLP concept "${concept}" simply, as if it were a markdown cell in a Kaggle data science notebook. Keep it under 100 words.`;
-  
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: prompt,
-  });
-
-  return response.text || "Could not generate explanation.";
+  if (provider === 'gemini') {
+    const ai = getGeminiAI();
+    const prompt = `Explain the NLP concept "${concept}" simply, as if it were a markdown cell in a Kaggle data science notebook. Keep it under 100 words.`;
+    const response = await ai.models.generateContent({
+      model: geminiModelName,
+      contents: prompt,
+    });
+    return response.text || "Could not generate explanation.";
+  } else {
+    const messages = [
+      { role: "system", content: "You are a data science tutor." },
+      { role: "user", content: `Explain the NLP concept "${concept}" simply, as if it were a markdown cell in a Kaggle data science notebook. Keep it under 100 words. Output raw text, not JSON.` }
+    ];
+    // Note: false for jsonMode
+    return await callGroq(messages, false);
+  }
 };

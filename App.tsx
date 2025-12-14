@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeSingleTweet, generateAndAnalyzeTopic, explainNLPConcept, hasValidKey } from './services/geminiService';
+import { analyzeSingleTweet, generateAndAnalyzeTopic, explainNLPConcept, hasValidKey, AIProvider } from './services/geminiService';
 import { TweetData, SentimentType } from './types';
 import { TweetCard } from './components/TweetCard';
 import { SentimentDistributionChart, KeywordBarChart } from './components/Charts';
-import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal, AlertTriangle, Settings, ExternalLink, PlayCircle } from 'lucide-react';
+import { Twitter, Search, BarChart3, BookOpen, RefreshCw, Sparkles, Terminal, AlertTriangle, Settings, ExternalLink, PlayCircle, RefreshCcw, Cpu } from 'lucide-react';
 
 // Common NLP terms to explain, mimicking a notebook curriculum
 const NLP_CONCEPTS = [
@@ -17,7 +17,8 @@ const NLP_CONCEPTS = [
 
 function App() {
   const [mode, setMode] = useState<'live' | 'dataset' | 'learn'>('dataset');
-  const [inputValue, setInputValue] = useState('Apple Vision Pro');
+  const [provider, setProvider] = useState<AIProvider>('gemini');
+  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [tweets, setTweets] = useState<TweetData[]>([]);
   const [explanation, setExplanation] = useState<{title: string, content: string} | null>(null);
@@ -27,19 +28,27 @@ function App() {
 
   // Initial load check
   useEffect(() => {
-    if (!hasValidKey()) {
+    // Check key for default provider
+    if (!hasValidKey(provider)) {
       setShowConfigWarning(true);
-    } else {
-      // If we have a key, do an initial fetch
-      handleAnalyze(false);
     }
+    // Removed automatic handleAnalyze call to prevent rate limiting
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Check key when provider changes
+  useEffect(() => {
+    if (!isDemoMode && !hasValidKey(provider)) {
+      setShowConfigWarning(true);
+    } else {
+      setShowConfigWarning(false);
+    }
+  }, [provider, isDemoMode]);
 
   const handleAnalyze = async (forceDemo?: boolean) => {
     const usingDemo = forceDemo ?? isDemoMode;
     
-    if (!hasValidKey() && !usingDemo) {
+    if (!hasValidKey(provider) && !usingDemo) {
       setShowConfigWarning(true);
       return;
     }
@@ -52,11 +61,11 @@ function App() {
 
     try {
       if (mode === 'live') {
-        const tweet = await analyzeSingleTweet(inputValue, usingDemo);
+        const tweet = await analyzeSingleTweet(inputValue, usingDemo, provider);
         setTweets([tweet]);
       } else {
         // Dataset mode: Simulate fetching and processing a batch
-        const batch = await generateAndAnalyzeTopic(inputValue, 15, usingDemo);
+        const batch = await generateAndAnalyzeTopic(inputValue, 15, usingDemo, provider);
         setTweets(batch);
       }
     } catch (err: any) {
@@ -72,14 +81,14 @@ function App() {
   };
 
   const handleLearn = async (concept: string) => {
-    if (!hasValidKey() && !isDemoMode) {
+    if (!hasValidKey(provider) && !isDemoMode) {
       setShowConfigWarning(true);
       return;
     }
     setExplanation(null);
     setError(null);
     try {
-      const content = await explainNLPConcept(concept, isDemoMode);
+      const content = await explainNLPConcept(concept, isDemoMode, provider);
       setExplanation({ title: concept, content });
     } catch (err: any) {
       setError("Failed to generate explanation. Please try again.");
@@ -89,7 +98,16 @@ function App() {
   const enableDemoMode = () => {
     setIsDemoMode(true);
     setShowConfigWarning(false);
-    handleAnalyze(true);
+    // Auto-run analysis in demo mode for instant gratification since it's free
+    setInputValue("Apple Vision Pro"); 
+    setTimeout(() => {
+        // We need to pass true explicitly because setIsDemoMode might not have flushed yet in this closure
+        // But actually, handleAnalyze uses state `isDemoMode` OR arg `forceDemo`.
+        // We'll call it with the value "Apple Vision Pro" set above, but React batching...
+        // Safest to just call logic that relies on the arg.
+        // We can't easily call handleAnalyze here because inputValue state won't be updated in this render cycle for the function to read it.
+        // So we will just set the mode. The user can click analyze.
+    }, 0);
   };
 
   // Calculate aggregate stats
@@ -108,9 +126,26 @@ function App() {
             <div className="bg-blue-500 p-2 rounded-lg text-white">
               <Twitter size={20} fill="currentColor" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight text-slate-800">Sentim<span className="text-blue-500">AI</span></h1>
+            <h1 className="font-bold text-xl tracking-tight text-slate-800 hidden sm:block">Sentim<span className="text-blue-500">AI</span></h1>
+            
+            {/* Provider Selector */}
+            <div className="flex items-center bg-slate-100 rounded-lg p-1 ml-4 border border-slate-200">
+              <button 
+                onClick={() => setProvider('gemini')}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${provider === 'gemini' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Sparkles size={14} /> Gemini
+              </button>
+              <button 
+                onClick={() => setProvider('groq')}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${provider === 'groq' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Cpu size={14} /> Groq
+              </button>
+            </div>
+
             {isDemoMode && (
-               <span className="ml-2 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200">
+               <span className="ml-2 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 whitespace-nowrap">
                  DEMO MODE
                </span>
             )}
@@ -118,9 +153,9 @@ function App() {
           
           <nav className="hidden md:flex gap-1 bg-slate-100 p-1 rounded-lg">
             {[
-              { id: 'dataset', label: 'Dataset Analysis', icon: BarChart3 },
-              { id: 'live', label: 'Live Tweet Check', icon: Search },
-              { id: 'learn', label: 'Notebook Concepts', icon: BookOpen },
+              { id: 'dataset', label: 'Dataset', icon: BarChart3 },
+              { id: 'live', label: 'Live Check', icon: Search },
+              { id: 'learn', label: 'Concepts', icon: BookOpen },
             ].map((item) => (
               <button
                 key={item.id}
@@ -144,43 +179,58 @@ function App() {
         
         {/* Error Banners */}
         {showConfigWarning && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="bg-amber-100 p-2 rounded-full text-amber-600 mt-1">
+              <div className="bg-amber-100 p-3 rounded-full text-amber-600">
                 <Settings size={24} />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-amber-800">Configuration Required</h3>
-                <p className="text-amber-700 mt-1 mb-4">
-                  To use the live AI features, you need to set up your Gemini API key in Vercel environment variables.
+                <h3 className="text-lg font-bold text-amber-900">
+                  {provider === 'gemini' ? 'Gemini' : 'Groq'} API Key Required
+                </h3>
+                <p className="text-amber-800 mt-1 mb-4">
+                  The application cannot detect your {provider === 'gemini' ? 'Gemini' : 'Groq'} API key. This is required for live analysis using the {provider} provider.
                 </p>
                 
-                <div className="flex flex-wrap gap-4">
+                <div className="bg-white/50 rounded-lg p-4 border border-amber-200 mb-4">
+                  <p className="text-sm font-bold text-amber-900 mb-2 uppercase tracking-wide">Configuration Steps:</p>
+                  <ol className="list-decimal list-inside text-sm text-amber-800 space-y-2">
+                    <li>Go to Vercel Dashboard → Settings → Environment Variables.</li>
+                    <li>
+                      Add <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">
+                        {provider === 'gemini' ? 'API_KEY' : 'GROQ_API_KEY'}
+                      </code> with your value.
+                    </li>
+                    <li className="font-bold text-amber-900">
+                      IMPORTANT: You must click "Redeploy" in Vercel for the key to take effect.
+                    </li>
+                  </ol>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
                    <a 
-                     href="https://aistudio.google.com/app/apikey" 
+                     href="https://vercel.com/dashboard" 
                      target="_blank" 
                      rel="noopener noreferrer"
-                     className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg font-medium transition-colors"
+                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors shadow-sm"
                    >
                      <ExternalLink size={18} />
-                     Get API Key
+                     Go to Vercel Dashboard
                    </a>
                    <button 
+                     onClick={() => window.location.reload()}
+                     className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg font-medium transition-colors"
+                   >
+                     <RefreshCcw size={18} />
+                     Reload Page
+                   </button>
+                   <button 
                      onClick={enableDemoMode}
-                     className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 rounded-lg font-medium transition-colors shadow-sm"
+                     className="flex items-center gap-2 px-4 py-2 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 rounded-lg font-medium transition-colors shadow-sm ml-auto"
                    >
                      <PlayCircle size={18} />
-                     Use Demo Mode (Mock Data)
+                     Use Demo Mode
                    </button>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-amber-200/50">
-                  <p className="text-xs text-amber-800 font-semibold mb-1">How to add to Vercel:</p>
-                  <ol className="list-decimal list-inside text-xs text-amber-800 space-y-1 ml-1 font-mono">
-                    <li>Vercel Dashboard → Project Settings → Environment Variables</li>
-                    <li>Key: API_KEY</li>
-                    <li>Value: [Your Gemini API Key]</li>
-                  </ol>
                 </div>
               </div>
             </div>
@@ -196,11 +246,21 @@ function App() {
 
         {/* Intro / Context */}
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">
-            {mode === 'dataset' && "Topic Sentiment Dashboard"}
-            {mode === 'live' && "Real-time Tweet Analyzer"}
-            {mode === 'learn' && "Interactive NLP Notebook"}
-          </h2>
+          <div className="flex items-center gap-3 mb-2">
+             <h2 className="text-2xl font-bold text-slate-800">
+              {mode === 'dataset' && "Topic Sentiment Dashboard"}
+              {mode === 'live' && "Real-time Tweet Analyzer"}
+              {mode === 'learn' && "Interactive NLP Notebook"}
+            </h2>
+            <span className={`px-2 py-1 rounded text-xs font-mono font-medium border ${
+              provider === 'gemini' 
+                ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                : 'bg-orange-50 text-orange-700 border-orange-200'
+            }`}>
+              Powered by {provider === 'gemini' ? 'Gemini 2.5 Flash' : 'Groq Llama 3'}
+            </span>
+          </div>
+          
           <p className="text-slate-500 max-w-3xl">
             {mode === 'dataset' && "Simulates scraping and analyzing a dataset of tweets from Kaggle. Enter a topic below to generate a synthetic dataset and run the sentiment classification pipeline."}
             {mode === 'live' && "Paste a tweet or type a sentence to run it through the sentiment classification model instantly."}
@@ -223,7 +283,9 @@ function App() {
             <button
               onClick={() => handleAnalyze()}
               disabled={(showConfigWarning && !isDemoMode) || isLoading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              className={`text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed ${
+                provider === 'gemini' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'
+              }`}
             >
               {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}
               {mode === 'dataset' ? 'Generate & Analyze' : 'Analyze'}
@@ -234,8 +296,8 @@ function App() {
         {/* Loading State */}
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <RefreshCw className="animate-spin mb-4 text-blue-500" size={32} />
-            <p>Running NLP Pipeline...</p>
+            <RefreshCw className={`animate-spin mb-4 ${provider === 'gemini' ? 'text-blue-500' : 'text-orange-500'}`} size={32} />
+            <p>Running NLP Pipeline via {provider === 'gemini' ? 'Gemini' : 'Groq'}...</p>
             <p className="text-sm opacity-70">Tokenizing • Vectorizing • Classifying</p>
           </div>
         )}
@@ -280,7 +342,9 @@ function App() {
             <div className="lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-slate-700">Analysed Tweets Stream</h3>
-                <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-1 rounded">Model: gemini-2.5-flash</span>
+                <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-1 rounded">
+                  Model: {provider === 'gemini' ? 'gemini-2.5-flash' : 'llama3-70b-8192'}
+                </span>
               </div>
               <div className="space-y-4">
                 {tweets.map(tweet => (
@@ -295,23 +359,23 @@ function App() {
         {!isLoading && mode === 'live' && tweets.length > 0 && (
           <div className="max-w-2xl mx-auto">
              <TweetCard tweet={tweets[0]} />
-             <div className="mt-8 p-6 bg-blue-50 border border-blue-100 rounded-xl">
-                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+             <div className={`mt-8 p-6 rounded-xl border ${provider === 'gemini' ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
+                <h3 className={`font-semibold mb-2 flex items-center gap-2 ${provider === 'gemini' ? 'text-blue-900' : 'text-orange-900'}`}>
                   <Terminal size={18} /> Behind the Scenes
                 </h3>
-                <p className="text-blue-800 text-sm mb-4">
+                <p className={`text-sm mb-4 ${provider === 'gemini' ? 'text-blue-800' : 'text-orange-800'}`}>
                   The model identified the sentiment as <strong>{tweets[0].analysis?.sentiment}</strong> with a confidence score of <strong>{tweets[0].analysis?.score.toFixed(2)}</strong>.
                 </p>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-blue-700 font-mono border-b border-blue-200 pb-1">
+                  <div className={`flex justify-between text-xs font-mono border-b pb-1 ${provider === 'gemini' ? 'text-blue-700 border-blue-200' : 'text-orange-700 border-orange-200'}`}>
                     <span>Input Text</span>
                     <span>String({tweets[0].text.length})</span>
                   </div>
-                  <div className="flex justify-between text-xs text-blue-700 font-mono border-b border-blue-200 pb-1">
+                  <div className={`flex justify-between text-xs font-mono border-b pb-1 ${provider === 'gemini' ? 'text-blue-700 border-blue-200' : 'text-orange-700 border-orange-200'}`}>
                     <span>Preprocessing</span>
                     <span>[Clean, Tokenize, Vectorize]</span>
                   </div>
-                  <div className="flex justify-between text-xs text-blue-700 font-mono">
+                  <div className={`flex justify-between text-xs font-mono ${provider === 'gemini' ? 'text-blue-700' : 'text-orange-700'}`}>
                     <span>Output Class</span>
                     <span>{tweets[0].analysis?.sentiment.toUpperCase()}</span>
                   </div>
